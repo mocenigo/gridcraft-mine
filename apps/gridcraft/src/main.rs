@@ -20,6 +20,8 @@ mod native_menu;
 #[cfg(target_os = "macos")]
 mod open_panel;
 mod print;
+#[cfg(target_os = "macos")]
+mod save_sheet;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -424,6 +426,10 @@ fn main() -> eframe::Result<()> {
                 }
                 #[cfg(target_os = "macos")]
                 let picked = open_panel::connect(&mut app, &cc.egui_ctx);
+                #[cfg(target_os = "macos")]
+                {
+                    app.services.save_prompt = Some(save_sheet::hook(&cc.egui_ctx));
+                }
                 let windows = DocWindows::new(&mut app, window_builder.clone(), DocWindows::platform_quits_with_last_window());
                 Ok(Box::new(App(
                     app,
