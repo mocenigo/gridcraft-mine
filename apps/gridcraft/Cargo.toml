@@ -59,17 +59,18 @@ muda = { version = "0.21", default-features = false }
 fmv-macos-events = "=0.1.0"
 # apple_events.rs brings the app forward for a Dock quit's question; open_panel.rs shows File ›
 # Open's panel with a completion block; save_sheet.rs asks Save Changes as a sheet on the
-# workbook's window. Already in Cargo.lock (muda, winit, rfd); pinned exactly to the same versions.
+# workbook's window; font_panel.rs receives the system font panel's picks. Already in Cargo.lock
+# (muda, winit, rfd); pinned exactly to the same versions.
 block2 = "=0.6.2"
 objc2 = "=0.6.5"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSAlert", "NSApplication", "NSButton", "NSControl", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "block2", "NSAlert", "NSApplication", "NSButton", "NSControl", "NSFont", "NSFontManager", "NSFontPanel", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSView", "NSWindow"] }
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSString", "NSURL"] }
 
 # tests/mac_menu_appkit.rs: reads AppKit's menu bar back. Already in Cargo.lock (muda, winit);
 # pinned exactly to the same versions.
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2 = "=0.6.5"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSButton", "NSControl", "NSView"] }
 
 [[test]]
 name = "mac_menu_appkit"
@@ -77,4 +78,9 @@ harness = false
 
 [[test]]
 name = "mac_open_panel"
+harness = false
+
+# tests/mac_font_panel.rs: the font panel's picks through AppKit, on the main thread.
+[[test]]
+name = "mac_font_panel"
 harness = false
