@@ -269,7 +269,7 @@ scrollbar bugs 2–4 · pixel/feel pass against observed Excel 7–12.
 |---|---|---|
 | 2026-11-16 | trivial | macOS: File › Open shows the system Open panel as a window of its own, not the blocking picker that aborted when resized (#2906), and not a sheet on the front workbook (#2908 makes the other pickers sheets) |
 | 2026-11-16 | trivial | macOS: Save Changes asks in a sheet on the unsaved workbook's own window, so other windows keep taking input; same-titled windows fall back to the built-in dialog |
-| 2026-11-16 | trivial | macOS: Format › Font… opens the system font panel, which formats the selected cells and follows the active cell; no shortcut, since ⌘D is Fill Down and ⌘T Insert Table |
+| 2026-11-16 | trivial | macOS: Format › Font… opens the system font panel, which formats the selected cells (font, size, bold, italic, text colour from any colour picker, underline and strikethrough) and follows the active cell; no shortcut, since ⌘D is Fill Down and ⌘T Insert Table |
 | 2026-11-16 | trivial | macOS: title-bar controls start 86 pt from the left, as far from macOS 26's 14 pt traffic lights (23 pt apart) as the title-bar icons are from each other (16 pt) |
 | 2026-11-05 | minor | Reconcile upstream form-control coverage with the CJK baseline and cell-alignment updates |
 | 2026-11-04 | minor | Keep centered emoji and symbol fallback placement when a row starts with a fallback or contains only fallbacks; use primary or baseline-aligned glyphs to anchor cell alignment |
