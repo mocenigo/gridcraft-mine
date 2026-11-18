@@ -67,7 +67,8 @@ objc2-foundation = { version = "=0.3.2", default-features = false, features = ["
 # pinned exactly to the same versions.
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2 = "=0.6.5"
-objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSButton", "NSControl", "NSView"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSAlert", "NSApplication", "NSButton", "NSControl", "NSMenu", "NSMenuItem", "NSResponder", "NSView", "NSWindow"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString"] }
 
 [[test]]
 name = "mac_menu_appkit"
@@ -80,4 +81,9 @@ harness = false
 # tests/mac_font_panel.rs: the font panel's picks through AppKit, on the main thread.
 [[test]]
 name = "mac_font_panel"
+harness = false
+
+# tests/mac_save_sheet_appkit.rs: the Save Changes sheets on real windows.
+[[test]]
+name = "mac_save_sheet_appkit"
 harness = false
