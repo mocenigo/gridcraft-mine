@@ -12,8 +12,18 @@ use std::cell::RefCell;
 use std::sync::mpsc::channel;
 
 thread_local! {
-    /// The Save Changes sheets up now: a new question on their window replaces them.
-    static ASKING: RefCell<Vec<Retained<NSWindow>>> = const { RefCell::new(Vec::new()) };
+    /// The Save Changes sheets up now, with the title they were asked for and their windows.
+    static ASKING: RefCell<Vec<(String, Retained<NSWindow>, Retained<NSWindow>)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The hook for `Services::end_save_prompt`: the sheet asked for `title` goes, answering Cancel
+/// to nobody; other windows' sheets stay.
+pub fn end(title: &str) {
+    let gone: Vec<_> = ASKING.with_borrow(|a| a.iter().filter(|(t, ..)| t == title).map(|(_, w, s)| (w.clone(), s.clone())).collect());
+    // Outside the borrow: ending runs the completion handler, which takes the sheet off ASKING.
+    for (window, sheet) in gone {
+        window.endSheet(&sheet);
+    }
 }
 
 pub fn hook(ctx: &egui::Context) -> SavePrompt {
@@ -34,19 +44,14 @@ pub fn hook(ctx: &egui::Context) -> SavePrompt {
         alert.addButtonWithTitle(&NSString::from_str("Save"));
         alert.addButtonWithTitle(&NSString::from_str("Cancel")).setKeyEquivalent(&NSString::from_str("\u{1b}"));
         alert.addButtonWithTitle(&NSString::from_str("Don't Save"));
-        // A question the app took back (`ui.dialog.cancel`) may still be up; nobody listens to its
-        // answer any more, so it goes and the new one asks in its place.
-        if let Some(old) = window.attachedSheet().filter(|s| ASKING.with_borrow(|a| a.contains(s))) {
-            window.endSheet(&old);
-        }
         let (answer, rx) = channel();
         let ctx = ctx.clone();
         let keep = alert.clone();
         let sheet = alert.window();
-        ASKING.with_borrow_mut(|a| a.push(sheet.clone()));
+        ASKING.with_borrow_mut(|a| a.push((title.to_string(), window.clone(), sheet.clone())));
         let done = RcBlock::new(move |response: NSModalResponse| {
             let _ = &keep; // the alert lives until it has answered
-            ASKING.with_borrow_mut(|a| a.retain(|s| *s != sheet));
+            ASKING.with_borrow_mut(|a| a.retain(|(.., s)| *s != sheet));
             let reply = match response {
                 r if r == NSAlertFirstButtonReturn => "save",
                 r if r == NSAlertThirdButtonReturn => "dontSave",
