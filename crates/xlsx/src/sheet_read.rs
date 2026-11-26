@@ -248,9 +248,9 @@ pub fn read_sheet(cx: &mut Ctx<'_>, part: &str, name: &str) -> Result<(Sheet, cr
         cx.warn(format!("sheet \"{name}\" is damaged: more than {} cells", crate::xml::MAX_XML_NODES));
         return Ok((Sheet::new(name), Default::default()));
     }
-    if sheet_part.merges.len() > crate::xml::MAX_XML_NODES {
+    let too_many_merges = sheet_part.merges.len() > crate::xml::MAX_XML_NODES;
+    if too_many_merges {
         cx.warn(format!("sheet \"{name}\" is damaged: more than {} merge cells", crate::xml::MAX_XML_NODES));
-        return Ok((Sheet::new(name), Default::default()));
     }
     for row in &rows {
         read_craft_row(cx, &mut sheet, &mut st, row).map_err(craft_error)?;
@@ -262,14 +262,21 @@ pub fn read_sheet(cx: &mut Ctx<'_>, part: &str, name: &str) -> Result<(Sheet, cr
     }
     settle_python_spills_past_budget(&st, &mut sheet);
 
-    apply_craft_sheet_part(cx, &sheet_part, &rels, name, &mut sheet)?;
+    apply_craft_sheet_part(cx, &sheet_part, &rels, name, too_many_merges, &mut sheet)?;
     let root = from_craft_el(&sheet_part.root);
     let read_controls = read_form_controls(cx, &root, &rels, &mut sheet);
     read_sheet_notes_and_tables(cx, &sheet_part, &rels, &mut sheet)?;
     Ok((sheet, read_controls))
 }
 
-fn apply_craft_sheet_part(cx: &mut Ctx<'_>, sp: &CraftSheetPart, rels: &[Rel], name: &str, sheet: &mut Sheet) -> Result<(), IoError> {
+fn apply_craft_sheet_part(
+    cx: &mut Ctx<'_>,
+    sp: &CraftSheetPart,
+    rels: &[Rel],
+    name: &str,
+    skip_merges: bool,
+    sheet: &mut Sheet,
+) -> Result<(), IoError> {
     let mut rel_by_id: HashMap<&str, &Rel> = HashMap::with_capacity(rels.len());
     for r in rels {
         rel_by_id.entry(r.id.as_str()).or_insert(r);
@@ -297,9 +304,11 @@ fn apply_craft_sheet_part(cx: &mut Ctx<'_>, sp: &CraftSheetPart, rels: &[Rel], n
     } else {
         apply_craft_cols(cx, &sp.columns, sheet)?;
     }
-    for m in &sp.merges {
-        if !m.is_single() {
-            sheet.merges.push(to_range_ref(*m));
+    if !skip_merges {
+        for m in &sp.merges {
+            if !m.is_single() {
+                sheet.merges.push(to_range_ref(*m));
+            }
         }
     }
     if let Some(v) = sp.features.views.first() {
@@ -417,6 +426,7 @@ struct RawCol {
     max: u32,
     width: Option<f64>,
     custom_width: bool,
+    best_fit: bool,
     hidden: bool,
     outline_level: u8,
     collapsed: bool,
@@ -432,6 +442,9 @@ fn apply_col_entry(cx: &Ctx<'_>, c: RawCol, remaining: &mut u64, sheet: &mut She
     let mut info = LineInfo::default();
     if let Some(w) = c.width {
         let px = col_width_to_px(w);
+        // Excel writes customWidth for every width it stores, and bestFit as well for one that
+        // AutoFit or a number format sized: only customWidth without bestFit was set by hand.
+        info.custom = c.custom_width && !c.best_fit;
         if c.custom_width || px != sheet.default_col_width {
             info.size = Some(px);
         }
@@ -465,6 +478,7 @@ fn apply_craft_cols(cx: &Ctx<'_>, cols: &[craft_xlsx::Column], sheet: &mut Sheet
             max: c.last + 1,
             width: c.width,
             custom_width: c.custom_width,
+            best_fit: c.best_fit,
             hidden: c.hidden,
             outline_level: c.outline_level,
             collapsed: c.collapsed,
@@ -488,6 +502,7 @@ fn apply_xml_cols(cx: &Ctx<'_>, sp: &CraftSheetPart, sheet: &mut Sheet) -> Resul
                     max: c.attr_u32("max").unwrap_or(0),
                     width: c.attr_f64("width"),
                     custom_width: c.flag("customWidth", false),
+                    best_fit: c.flag("bestFit", false),
                     hidden: c.flag("hidden", false),
                     outline_level: c.attr_u32("outlineLevel").unwrap_or(0).min(7) as u8,
                     collapsed: c.flag("collapsed", false),
@@ -924,6 +939,11 @@ fn read_craft_formula_text(
 
 /// `2024-03-15`, `2024-03-15T10:30:00Z`, `10:30:00` → serial.
 pub fn parse_iso_datetime(s: &str, sys: DateSystem) -> Option<f64> {
+    parse_iso_datetime_with(s, |y, m, d| serial_from_ymd(sys, y, m, d))
+}
+
+/// [`parse_iso_datetime`] with `ymd` turning the date part (year, month 1–12, day 1–31) into a serial.
+pub(crate) fn parse_iso_datetime_with(s: &str, ymd: impl Fn(i64, i64, i64) -> Option<f64>) -> Option<f64> {
     let s = s.trim_end_matches('Z');
     let (date, time) = match s.split_once('T') {
         Some((d, t)) => (d, Some(t)),
@@ -939,7 +959,7 @@ pub fn parse_iso_datetime(s: &str, sys: DateSystem) -> Option<f64> {
         if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
             return None;
         }
-        serial = serial_from_ymd(sys, y, m, d)?;
+        serial = ymd(y, m, d)?;
     }
     if let Some(t) = time {
         // Drop a time-zone offset.
@@ -998,6 +1018,7 @@ pub fn parse_sqref(s: Option<&str>) -> Vec<RangeRef> {
 /// Worksheet extensions: x14 data validations and sparklines.
 fn read_ext(cx: &mut Ctx<'_>, e: &El, sheet: &mut Sheet, cf_kept_cells: &mut u64) {
     for ext in e.kids("ext") {
+        crate::extlist::read_sheet_ext(cx, ext);
         for c in &ext.children {
             match c.name.as_str() {
                 "dataValidations" => {
@@ -1095,11 +1116,16 @@ mod tests {
             num_fmts: Default::default(),
             cell_pictures: vec![],
             cf_ext_ids: vec![],
+            sheet_exts: vec![],
+            sheet_exts_dropped: vec![],
             known_function: None,
             python: Default::default(),
+            chart_parts: vec![],
             cells: 0,
             shared_formula_bytes: 0,
             legacy_formulas: vec![],
+            pivot_charts: vec![],
+            chart_budget: crate::chart::ChartReadBudget::new(),
         }
     }
 
